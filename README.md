@@ -85,3 +85,34 @@
 - 画面の「URLからインポート」でJSON配列のURLを指定し、[URLを読み込み]をクリック。
 - CORSで取得できない場合は、同期欄の「サーバURL」に `http://localhost:8787` を設定すると、サーバの `/api/proxy` 経由で取得できます。
 - 注意: 著作権に注意し、利用が許可されたデータのみ取り込んでください。
+
+### WebページからPDFリンクの一括ダウンロード（LEC等）
+
+- サーバ起動後、リンク抽出のプレビュー:
+  - 例（LECの過去問DLページ）
+  - `http://localhost:8787/api/extract-links?url=https%3A%2F%2Fwww.lec-jp.com%2Fshindanshi%2Finfo%2Fdownload%2Fkakomon.html&pattern=\.pdf$`
+- ダウンロード実行（POST）: 取得したページ内のパターンに一致するリンクを `server/data/downloads/` に保存します。
+  - PowerShell例:
+    - `Invoke-WebRequest -Method Post "http://localhost:8787/api/download?url=https%3A%2F%2Fwww.lec-jp.com%2Fshindanshi%2Finfo%2Fdownload%2Fkakomon.html&pattern=\.pdf$"`
+  - 結果JSONに保存パスが含まれます。
+- その後、必要に応じてPDF→問題データ(JSON)への変換を行います（要実装）。抽出ロジックはサイトの構成に依存するため、対象PDFのサンプルを共有ください。
+
+### PDFからの抽出（テキスト→問題JSON：簡易）
+
+依存: `pdf-parse`
+
+1) 単一PDFのテキスト取得
+- `http://localhost:8787/api/parse-pdf?file=downloads/<保存されたPDF名>`
+
+2) 単一PDFから問題抽出（簡易ヒューリスティック）
+- POST `http://localhost:8787/api/extract-questions`
+- Body(JSON): `{ "file": "downloads/<PDF名>", "meta": { "subject": "経営情報システム", "year": 2022 } }`
+- 出力: `server/data/extracted/<PDF名>.json` に保存され、件数がJSONで返ります
+
+3) downloads 配下の全PDFを一括抽出
+- POST `http://localhost:8787/api/extract-all`
+- 抽出結果は `server/data/extracted/` に `.json` で保存されます
+
+注意
+- この抽出は汎用のヒューリスティック（「第◯問」「問◯」分割、(1)〜(4)／ア〜エ／A〜D など）です。PDFレイアウトにより精度が変わります。
+- 正解はPDFの別紙等に依存するため、初期版では付与されないことがあります。必要に応じてパターンを追加入力します。

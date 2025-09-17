@@ -116,3 +116,21 @@
 注意
 - この抽出は汎用のヒューリスティック（「第◯問」「問◯」分割、(1)〜(4)／ア〜エ／A〜D など）です。PDFレイアウトにより精度が変わります。
 - 正解はPDFの別紙等に依存するため、初期版では付与されないことがあります。必要に応じてパターンを追加入力します。
+
+### OCRパイプライン（スキャンPDF用）
+
+1) 言語データの取得（初回のみ）
+- POST `http://localhost:8787/api/ocr-setup`
+- Body(JSON): `{ "langs": "jpn,eng" }`
+- 保存先: `server/data/tessdata/` に `jpn.traineddata` などをダウンロード
+
+2) PDFの画像化（pdftoppm が必要）→ OCR → 抽出
+- Poppler（pdftoppm）がPATHにある場合:
+  - POST `http://localhost:8787/api/ocr-pdf`
+  - Body(JSON): `{ "file": "downloads/<PDF名>", "lang": "jpn", "meta": { "subject": "...", "year": 2025 } }`
+  - 画像は `server/data/tmp/<PDF名基準>/` に生成、抽出結果は `server/data/extracted/*.ocr.json`
+- pdftoppm が無い場合:
+  - PDFを手元でPNGへ変換（300dpi推奨）し、`server/data/downloads/` に配置
+  - 画像毎に POST `/api/ocr-image` → 返却テキストをまとめて `/api/extract-questions` へ渡す（手動）
+
+注: OCRは処理時間がかかります。最初に1〜2ページで確認し、ルール調整後に全ページへ拡張すると効率的です。

@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/HP486379/chusho#readme",
   "dependencies": {
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^4.1.4"
   }
 }

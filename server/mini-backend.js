@@ -23,6 +23,7 @@ if (!fs.existsSync(PROGRESS_FILE)) fs.writeFileSync(PROGRESS_FILE, JSON.stringif
 fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 fs.mkdirSync(EXTRACT_DIR, { recursive: true });
 const { parsePdfText, extractQuestionsFromText } = require('./pdf');
+const { createWorker } = require('tesseract.js');
 
 function send(res, code, body, headers = {}) {
   const h = {
@@ -103,6 +104,30 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Download traineddata for OCR (e.g., langs=jpn,eng)
+  if (req.method === 'POST' && pathname === '/api/ocr-setup') {
+    try {
+      const body = await parseBody(req);
+      const langs = (body?.langs || 'jpn,eng').split(',').map(s => s.trim()).filter(Boolean);
+      const results = [];
+      for (const lang of langs) {
+        const dest = path.join(DATA_DIR, 'tessdata', `${lang}.traineddata`);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        if (!fs.existsSync(dest)) {
+          const urlTd = `https://tessdata.projectnaptha.com/4.0.0/${lang}.traineddata`;
+          const buf = await fetchBuffer(urlTd);
+          fs.writeFileSync(dest, buf);
+          results.push({ lang, downloaded: true });
+        } else {
+          results.push({ lang, downloaded: false });
+        }
+      }
+      return send(res, 200, { ok: true, results });
+    } catch (e) {
+      return send(res, 500, { error: 'setup_failed' });
+    }
+  }
+
   // Parse a single PDF into raw text
   if (req.method === 'GET' && pathname === '/api/parse-pdf') {
     const q = url.parse(req.url, true).query;
@@ -158,6 +183,48 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true, results });
   }
 
+  // OCR a single image (PNG/JPG) under data/, return text
+  if (req.method === 'POST' && pathname === '/api/ocr-image') {
+    try {
+      const body = await parseBody(req);
+      const rel = body?.file || '';
+      const abs = path.normalize(path.join(DATA_DIR, rel));
+      if (!abs.startsWith(DATA_DIR)) return send(res, 400, { error: 'invalid path' });
+      if (!fs.existsSync(abs)) return send(res, 404, { error: 'not found' });
+      const text = await ocrImage(abs, body?.lang || 'jpn');
+      return send(res, 200, { ok: true, text });
+    } catch (e) {
+      return send(res, 500, { error: 'ocr_failed' });
+    }
+  }
+
+  // OCR a PDF by converting with pdftoppm (Poppler) if available
+  if (req.method === 'POST' && pathname === '/api/ocr-pdf') {
+    try {
+      const body = await parseBody(req);
+      const rel = body?.file || '';
+      const lang = body?.lang || 'jpn';
+      const abs = path.normalize(path.join(DATA_DIR, rel));
+      if (!abs.startsWith(DATA_DIR)) return send(res, 400, { error: 'invalid path' });
+      if (!fs.existsSync(abs)) return send(res, 404, { error: 'not found' });
+      const outDir = path.join(DATA_DIR, 'tmp', path.basename(rel, path.extname(rel)));
+      fs.mkdirSync(outDir, { recursive: true });
+      const ok = await tryPdftoppm(abs, outDir);
+      if (!ok) return send(res, 400, { error: 'pdftoppm_not_found', hint: 'Install Poppler and ensure pdftoppm is in PATH, or convert PDF to images manually and call /api/ocr-image.' });
+      const files = fs.readdirSync(outDir).filter(f => /\.png$/i.test(f)).map(f => path.join(outDir, f));
+      const texts = [];
+      for (const f of files) texts.push(await ocrImage(f, lang));
+      const combined = texts.join('\n');
+      const questions = extractQuestionsFromText(combined, body?.meta || {});
+      const outName = path.basename(rel, path.extname(rel)) + '.ocr.json';
+      const outPath = path.join(EXTRACT_DIR, outName);
+      fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
+      return send(res, 200, { ok: true, pages: files.length, count: questions.length, file: path.relative(DATA_DIR, outPath) });
+    } catch (e) {
+      return send(res, 500, { error: 'ocr_pdf_failed' });
+    }
+  }
+
   // Extract links from a remote HTML page (PDF by default; regex filter via ?pattern=)
   if (req.method === 'GET' && pathname === '/api/extract-links') {
     const q = url.parse(req.url, true).query;
@@ -193,6 +260,19 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true, count: results.filter(r => r.ok).length, items: results });
     } catch (e) {
       return send(res, 502, { error: 'fetch failed' });
+    }
+  }
+
+  // Download a single file to downloads/
+  if (req.method === 'POST' && pathname === '/api/download-file') {
+    const q = url.parse(req.url, true).query;
+    const target = (q.url || '').toString();
+    if (!/^https?:\/\//i.test(target)) return send(res, 400, { error: 'invalid url' });
+    try {
+      const saved = await downloadIntoDir(target, DOWNLOAD_DIR);
+      return send(res, 200, { ok: true, file: path.relative(DATA_DIR, saved) });
+    } catch (e) {
+      return send(res, 502, { error: 'download_failed' });
     }
   }
 
@@ -304,6 +384,36 @@ async function downloadIntoDir(href, dir) {
   }
   await downloadFile(href, dest);
   return dest;
+}
+
+async function fetchBuffer(target) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(target);
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.get(target, (r) => {
+      if (r.statusCode && r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
+        try { fetchBuffer(new URL(r.headers.location, u).toString()).then(resolve, reject); } catch (e) { reject(e); }
+        return;
+      }
+      const chunks = [];
+      r.on('data', c => chunks.push(c));
+      r.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    req.on('error', reject);
+  });
+}
+
+async function ocrImage(imagePath, lang) {
+  const langPath = path.join(DATA_DIR, 'tessdata');
+  const worker = await createWorker({ langPath });
+  try {
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+    const { data } = await worker.recognize(imagePath);
+    return data?.text || '';
+  } finally {
+    await worker.terminate();
+  }
 }
 
 function downloadFile(href, dest) {

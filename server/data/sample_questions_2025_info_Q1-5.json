@@ -1,0 +1,191 @@
+[
+  {
+    "id": "2025-info-01",
+    "subject": "経営情報システム",
+    "year": 2025,
+    "number": 1,
+    "difficulty": 2,
+    "tags": [
+      "USB",
+      "インタフェース"
+    ],
+    "stem": "PCやスマートフォンなどに周辺機器を接続するUSBに関する記述の正誤の組み合わせとして、最も適切なものを下記の解答群から選べ。",
+    "choices": [
+      {
+        "label": "ア",
+        "text": "ａ：正　ｂ：正　ｃ：誤　ｄ：正",
+        "correct": false
+      },
+      {
+        "label": "イ",
+        "text": "ａ：正　ｂ：誤　ｃ：正　ｄ：誤",
+        "correct": true
+      },
+      {
+        "label": "ウ",
+        "text": "ａ：誤　ｂ：正　ｃ：正　ｄ：誤",
+        "correct": false
+      },
+      {
+        "label": "エ",
+        "text": "ａ：誤　ｂ：正　ｃ：誤　ｄ：正",
+        "correct": false
+      },
+      {
+        "label": "オ",
+        "text": "ａ：誤　ｂ：誤　ｃ：正　ｄ：正",
+        "correct": false
+      }
+    ],
+    "explanation": "USBはホットプラグに対応しており、Type-Cは上下どちらの向きでも差し込める。ただし、全てのUSB Type-CポートがPower Delivery対応ではないため『イ』が正解となる。"
+  },
+  {
+    "id": "2025-info-02",
+    "subject": "経営情報システム",
+    "year": 2025,
+    "number": 2,
+    "difficulty": 2,
+    "tags": [
+      "クラウド",
+      "仮想化"
+    ],
+    "stem": "クラウドコンピューティングにおいて、仮想化技術はITリソースの効率的な活用を支えている。仮想化技術に関する記述として、最も適切なものはどれか。",
+    "choices": [
+      {
+        "label": "ア",
+        "text": "コンテナは、物理マシン上に直接、仮想化ソフトウェアを動作させ、その上で1つ以上のゲストOSを稼働させる技術である。",
+        "correct": false
+      },
+      {
+        "label": "イ",
+        "text": "コンテナは、ホストOS上に仮想化ソフトウェアを動作させ、その上で1つ以上のゲストOSを稼働させる技術である。",
+        "correct": false
+      },
+      {
+        "label": "ウ",
+        "text": "ハイパーバイザは、アプリケーションやライブラリなどをパッケージ化し、ホストOSのカーネルを直接利用することで、ゲストOSなしでアプリケーションを稼働させる技術である。",
+        "correct": false
+      },
+      {
+        "label": "エ",
+        "text": "ハイパーバイザは、単一の物理マシン上に1つ以上の仮想マシンを稼働させる技術である。",
+        "correct": true
+      }
+    ],
+    "explanation": "仮想化技術では、ハイパーバイザが仮想マシンを稼働させる役割を担う。"
+  },
+  {
+    "id": "2025-info-03",
+    "subject": "経営情報システム",
+    "year": 2025,
+    "number": 3,
+    "difficulty": 1,
+    "tags": [
+      "RFID"
+    ],
+    "stem": "RFIDは、検品や棚卸などの業務で商品の識別に用いられる技術である。RFIDに関する記述として、最も適切なものはどれか。",
+    "choices": [
+      {
+        "label": "ア",
+        "text": "RFタグのメモリの型には、リードオンリー型、ライトワンス・リードメニー型、リード・ライト型がある。",
+        "correct": true
+      },
+      {
+        "label": "イ",
+        "text": "カメラによる画像処理を利用して、複数のRFタグのデータを一括して読み取ることができる。",
+        "correct": false
+      },
+      {
+        "label": "ウ",
+        "text": "赤外線を利用して、複数のRFタグのデータを一括して読み取ることができる。",
+        "correct": false
+      },
+      {
+        "label": "エ",
+        "text": "パッシブタグは、内蔵電源を用いて無線信号を発信できる。",
+        "correct": false
+      }
+    ],
+    "explanation": "RFタグには複数のメモリ形式が存在する。パッシブタグは内蔵電源を持たず、リーダーからの電波で駆動する。"
+  },
+  {
+    "id": "2025-info-04",
+    "subject": "経営情報システム",
+    "year": 2025,
+    "number": 4,
+    "difficulty": 2,
+    "tags": [
+      "Web API",
+      "JSON",
+      "HTTP"
+    ],
+    "stem": "Webアプリケーションにおいて、クライアントとサーバ間のデータ交換に関する記述の正誤の組み合わせとして、最も適切なものを下記の解答群から選べ。",
+    "choices": [
+      {
+        "label": "ア",
+        "text": "ａ：正　ｂ：正　ｃ：誤　ｄ：正",
+        "correct": false
+      },
+      {
+        "label": "イ",
+        "text": "ａ：正　ｂ：誤　ｃ：正　ｄ：正",
+        "correct": true
+      },
+      {
+        "label": "ウ",
+        "text": "ａ：正　ｂ：誤　ｃ：誤　ｄ：誤",
+        "correct": false
+      },
+      {
+        "label": "エ",
+        "text": "ａ：誤　ｂ：正　ｃ：正　ｄ：誤",
+        "correct": false
+      },
+      {
+        "label": "オ",
+        "text": "ａ：誤　ｂ：誤　ｃ：正　ｄ：正",
+        "correct": false
+      }
+    ],
+    "explanation": "JSONはWebデータ交換の主要形式であり、HTTPはクライアントとサーバ間の通信に用いられる。RESTはOS機能ではなく、HTTPメソッドに基づく設計原則。"
+  },
+  {
+    "id": "2025-info-05",
+    "subject": "経営情報システム",
+    "year": 2025,
+    "number": 5,
+    "difficulty": 2,
+    "tags": [
+      "通信プロトコル"
+    ],
+    "stem": "情報ネットワークで用いられる通信プロトコルに関する記述とその用語の組み合わせとして、最も適切なものを下記の解答群から選べ。",
+    "choices": [
+      {
+        "label": "ア",
+        "text": "ａ：TCP ｂ：SNMP ｃ：ARP",
+        "correct": false
+      },
+      {
+        "label": "イ",
+        "text": "ａ：TCP ｂ：SNMP ｃ：IP",
+        "correct": false
+      },
+      {
+        "label": "ウ",
+        "text": "ａ：UDP ｂ：DHCP ｃ：ARP",
+        "correct": false
+      },
+      {
+        "label": "エ",
+        "text": "ａ：UDP ｂ：DHCP ｃ：IP",
+        "correct": true
+      },
+      {
+        "label": "オ",
+        "text": "ａ：UDP ｂ：SNMP ｃ：ARP",
+        "correct": false
+      }
+    ],
+    "explanation": "リアルタイム通信ではUDP、アドレス割当はDHCP、経路指定はIPが用いられる。"
+  }
+]

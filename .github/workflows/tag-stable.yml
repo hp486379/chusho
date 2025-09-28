@@ -1,0 +1,77 @@
+name: Tag Stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to tag (branch, SHA, or tag)
+        default: main
+        required: true
+      date:
+        description: YYYYMMDD (optional; defaults to UTC today)
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  create-stable-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Compute tag name
+        id: tag
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.date }}" ]]; then
+            DATE="${{ inputs.date }}"
+          else
+            DATE="$(date -u +%Y%m%d)"
+          fi
+          TAG="stable-${DATE}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create tag if missing
+        id: create
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.tag.outputs.tag }}'
+          REF='${{ inputs.ref }}'
+
+          # Resolve ref to a commit
+          COMMIT_SHA=$(git rev-parse "$REF^{commit}")
+          echo "Resolved $REF -> $COMMIT_SHA"
+
+          # Fetch remote tags and check for existence
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            EXIST_SHA=$(git rev-list -n 1 "$TAG")
+            if [[ "$EXIST_SHA" == "$COMMIT_SHA" ]]; then
+              echo "Tag $TAG already points to $COMMIT_SHA (no-op)."
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            else
+              echo "Tag $TAG already exists at $EXIST_SHA; refusing to move it." >&2
+              exit 1
+            fi
+          fi
+
+          git tag -a "$TAG" -m "Stable snapshot $TAG" "$COMMIT_SHA"
+          git push origin "$TAG"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "Created tag: ${{ steps.tag.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+

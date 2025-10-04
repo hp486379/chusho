@@ -1,0 +1,205 @@
+﻿<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <title>繧ｭ繝・ぜ繝昴こ繝・ヨ 縺雁ｰ城▲縺・い繝励Μ</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script>window.KA_CLOUD_DISABLED=true;</script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23ffd1e6'/%3E%3Ccircle cx='22' cy='26' r='6' fill='%23ff66a3'/%3E%3Crect x='12' y='32' width='40' height='18' rx='9' fill='%23ff9ac6'/%3E%3Ccircle cx='42' cy='26' r='6' fill='%23ff66a3'/%3E%3Crect x='45' y='20' width='8' height='6' rx='2' fill='%23ffa6cf'/%3E%3Ccircle cx='26' cy='40' r='3' fill='%23fff'/%3E%3Ccircle cx='38' cy='40' r='3' fill='%23fff'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <header class="app-header">
+        <div class="profile">
+          <button id="avatarButton" class="avatar" aria-label="繧｢繝舌ち繝ｼ螟画峩">凾</button>
+          <div class="name-wrap">
+            <input id="childName" class="child-name" placeholder="縺ｪ縺ｾ縺医ｒ縺・ｌ縺ｦ縺ｭ" maxlength="12" />
+            <div class="greeting">繧医≧縺薙◎・・/div>
+          </div>
+        </div>
+        <div class="balance-card">
+          <div class="balance-label">縺・∪縺ｮ縺悶ｓ縺縺・/div>
+          <div id="balance" class="balance">\0</div>
+          <div class="piggy-wrap">
+            <div class="piggy" id="piggy" aria-hidden="true">
+              <span class="top" aria-hidden="true"></span>
+              <span class="body" aria-hidden="true"></span>
+              <span class="head" aria-hidden="true"></span>
+              <span class="snout" aria-hidden="true"></span>
+              <span class="ear e1" aria-hidden="true"></span>
+              <span class="ear e2" aria-hidden="true"></span>
+              <span class="leg l1" aria-hidden="true"></span>
+              <span class="leg l2" aria-hidden="true"></span>
+              <span class="leg l3" aria-hidden="true"></span>
+              <span class="leg l4" aria-hidden="true"></span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-tab="home" role="tab" aria-selected="true">繝帙・繝</button>
+        <button class="tab" data-tab="transactions" role="tab">縺翫％縺･縺九＞</button>
+        <button class="tab" data-tab="goals" role="tab">繧ゅ￥縺ｲ繧・≧</button>
+        <button class="tab" data-tab="chores" role="tab">縺翫※縺､縺縺・/button>
+        <button class="tab" data-tab="settings" role="tab">縺帙▲縺ｦ縺・/button>
+      </nav>
+
+      <main class="views">
+        <section id="view-home" class="view active" aria-labelledby="tab-home">
+          <div class="cards-grid">
+            <div class="card">
+              <div class="card-title">縺輔＞縺阪ｓ縺ｮ縺・＃縺・/div>
+              <ul id="recentList" class="list recent-list" aria-live="polite"></ul>
+            </div>
+            <div class="card">
+              <div class="card-title">繧ｯ繧､繝・け霑ｽ蜉</div>
+              <div class="quick-actions">
+                <button id="quickAdd100" class="btn btn-good">+100蜀・/button>
+                <button id="quickAdd300" class="btn btn-good">+300蜀・/button>
+                <button id="quickSnack" class="btn btn-bad">-150蜀・縺翫ｄ縺､</button>
+              </div>
+              <form id="quickForm" class="form-inline" autocomplete="off">
+                <select id="quickType" class="input type">
+                  <option value="income">縺ｵ繧・☆</option>
+                  <option value="expense">縺ｸ繧峨☆</option>
+                </select>
+                <input id="quickAmount" class="input amount" inputmode="numeric" pattern="[0-9]*" placeholder="驥鷹｡・ />
+                <input id="quickNote" class="input note" placeholder="繝｡繝｢" />
+                <button class="btn primary" type="submit">霑ｽ蜉</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-transactions" class="view" aria-labelledby="tab-transactions">
+          <div class="toolbar">
+            <div class="filter">
+              <select id="filterType" class="input">
+                <option value="all">縺吶∋縺ｦ</option>
+                <option value="income">縺ｵ繧・☆</option>
+                <option value="expense">縺ｸ繧峨☆</option>
+                <option value="goal">縺｡繧・″繧・/option>
+                <option value="chore">縺翫※縺､縺縺・/option>
+              </select>
+            </div>
+            <button id="addTransactionBtn" class="btn primary">譁ｰ縺励￥霑ｽ蜉</button>
+          </div>
+          <ul id="txList" class="list tx-list"></ul>
+
+          <dialog id="txDialog" class="dialog">
+            <form method="dialog" id="txForm" class="form" autocomplete="off">
+              <h3>縺翫％縺･縺九＞繧定ｿｽ蜉</h3>
+              <label class="field">
+                <span>縺励ｅ繧九＞</span>
+                <select id="txType" required>
+                  <option value="income">縺ｵ繧・☆</option>
+                  <option value="expense">縺ｸ繧峨☆</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>驥鷹｡・/span>
+                <input id="txAmount" inputmode="numeric" pattern="[0-9]*" placeholder="萓・200" required />
+              </label>
+              <label class="field">
+                <span>繝｡繝｢</span>
+                <input id="txNote" placeholder="萓・縺翫ｄ縺､/縺翫％縺･縺九＞" />
+              </label>
+              <menu class="dialog-actions">
+                <button value="cancel" class="btn">繧ゅ←繧・/button>
+                <button value="ok" class="btn primary" id="txSubmit">霑ｽ蜉</button>
+              </menu>
+            </form>
+          </dialog>
+        </section>
+
+        <section id="view-goals" class="view" aria-labelledby="tab-goals">
+          <div class="toolbar">
+            <button id="addGoalBtn" class="btn primary">繧ゅ￥縺ｲ繧・≧繧剃ｽ懊ｋ</button>
+          </div>
+          <div id="goalList" class="goals"></div>
+
+          <dialog id="goalDialog" class="dialog">
+            <form method="dialog" id="goalForm" class="form" autocomplete="off">
+              <h3>繧ゅ￥縺ｲ繧・≧</h3>
+              <label class="field">
+                <span>縺ｪ縺ｾ縺・/span>
+                <input id="goalName" maxlength="20" placeholder="萓・繝ｬ繧ｴ" required />
+              </label>
+              <label class="field">
+                <span>逶ｮ讓咎≡鬘・/span>
+                <input id="goalTarget" inputmode="numeric" pattern="[0-9]*" placeholder="萓・2000" required />
+              </label>
+              <menu class="dialog-actions">
+                <button value="cancel" class="btn">繧ゅ←繧・/button>
+                <button value="ok" class="btn primary" id="goalSubmit">縺､縺上ｋ</button>
+              </menu>
+            </form>
+          </dialog>
+        </section>
+
+        <section id="view-chores" class="view" aria-labelledby="tab-chores">
+          <div class="card">
+            <div class="card-title">縺阪ｇ縺・・縺翫※縺､縺縺・/div>
+            <ul id="choreList" class="list chore-list"></ul>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view" aria-labelledby="tab-settings">
+          <div class="card">
+            <div class="card-title">繝励Ο繝輔ぅ繝ｼ繝ｫ</div>
+            <div class="field-row">
+              <label>縺ｪ縺ｾ縺・/label>
+              <input id="settingsName" maxlength="12" />
+            </div>
+            <div class="field-row">
+              <label>繝・・繝・/label>
+              <select id="themeSelect">
+                <option value="cute">繝斐Φ繧ｯ・医°繧上＞縺・ｼ・/option>
+                <option value="adventure">繧｢繝峨・繝ｳ繝√Ε繝ｼ・医ヶ繝ｫ繝ｼ・・/option>
+              </select>
+            </div>
+            <div class="field-row">
+              <label>繧｢繝舌ち繝ｼ</label>
+              <div id="avatarChoices" class="avatar-choices"></div>
+            </div>
+            <div class="field-row">
+              <label>縺翫°縺ｭ縺ｮ蜊倅ｽ・/label>
+              <select id="currency">
+                <option value="\">蜀・(\)</option>
+                <option value="$">繝峨Ν ($)</option>
+                <option value="?">繝ｦ繝ｼ繝ｭ (?)</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <button id="resetData" class="btn danger">繝・・繧ｿ繧貞・驛ｨ縺代☆</button>
+            </div>
+            <div class="field-row" style="gap:8px; flex-wrap:wrap">
+              <button id="saveNowSettings" class="btn primary">菫晏ｭ・/button>
+              <button id="exportData" class="btn">繧ｨ繧ｯ繧ｹ繝昴・繝・/button>
+              <button id="importData" class="btn">繧､繝ｳ繝昴・繝・/button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="confetti" class="confetti" aria-hidden="true"></div>
+
+    <dialog id="ioDialog" class="dialog">
+      <form method="dialog" class="form" autocomplete="off">
+        <h3 id="ioTitle">繝・・繧ｿ</h3>
+        <textarea id="ioText" class="textarea" spellcheck="false"></textarea>
+        <menu class="dialog-actions">
+          <button value="cancel" class="btn">縺ｨ縺倥ｋ</button>
+          <button value="ok" id="ioOk" class="btn primary">OK</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <!-- Cloud sync disabled: do not load main.js or firebase.js -->
+    <script src="app.js?v=25"></script>
+  </body>
+</html>
+

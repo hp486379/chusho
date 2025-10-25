@@ -526,28 +526,405 @@
     const files = Array.from(fileList || []);
     if (!files.length) return alert('ファイルを選択してください');
     const all = [];
+    const parseErrors = [];
     for (const f of files) {
       try {
         const json = JSON.parse(await f.text());
-        if (Array.isArray(json)) all.push(...json);
-      } catch (_) {}
+        const arr = extractQuestionArray(json);
+        if (arr.length) {
+          all.push(...arr);
+        } else {
+          parseErrors.push(`${f.name}: 問題データが見つかりませんでした`);
+        }
+      } catch (e) {
+        parseErrors.push(`${f.name}: JSONの解析に失敗しました`);
+      }
     }
+
+    const { valid, invalidReasons } = prepareQuestionList(all);
+    if (!valid.length) {
+      const detail = parseErrors.concat(invalidReasons).join('\n') || '有効な問題が見つかりませんでした';
+      alert(detail);
+      return;
+    }
+
     // 既存データとマージ（id重複は今回インポート分で上書き）
     const existing = loadQuestions();
     const byId = new Map(existing.map(q => [q.id, q]));
-    for (const q of all) if (validQuestion(q)) byId.set(q.id, q);
+    for (const q of valid) byId.set(q.id, q);
     const merged = Array.from(byId.values());
-    if (!merged.length) return alert('有効な問題が見つかりません');
     saveJSON(STORAGE.questions, merged);
-    alert(`現在の問題数: ${merged.length}件（既存と統合・重複は上書き）`);
+
+    const messages = [`現在の問題数: ${merged.length}件（既存と統合・重複は上書き）`];
+    if (invalidReasons.length) {
+      const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+      messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+    }
+    if (parseErrors.length) {
+      const samples = Array.from(new Set(parseErrors)).slice(0, 5);
+      messages.push(`ファイル解析エラー: ${parseErrors.length}件\n- ${samples.join('\n- ')}`);
+    }
+    alert(messages.join('\n\n'));
     refreshFiltersAndStats();
   }
 
   function validQuestion(q) {
-    if (!q || typeof q !== 'object') return false;
-    if (!q.id || !q.subject || !q.year || !q.number || !q.stem || !Array.isArray(q.choices)) return false;
-    const hasCorrect = q.choices.some(c => c && typeof c.text === 'string' && !!c.correct);
-    return hasCorrect;
+    return !validateQuestion(q);
+  }
+
+  function prepareQuestionList(list) {
+    const candidates = flattenQuestionCandidates(list);
+    const valid = [];
+    const invalidReasons = [];
+    for (const raw of candidates) {
+      const { value, error } = coerceQuestion(raw);
+      if (value) valid.push(value);
+      else if (error) invalidReasons.push(error);
+    }
+    return { valid, invalidReasons };
+  }
+
+  function extractQuestionArray(raw) {
+    return flattenQuestionCandidates(raw);
+  }
+
+  function flattenQuestionCandidates(input) {
+    const acc = [];
+    collectQuestionNodes(input, acc);
+    return acc;
+  }
+
+  function collectQuestionNodes(node, acc) {
+    if (node == null) return;
+    if (Array.isArray(node)) {
+      for (const item of node) collectQuestionNodes(item, acc);
+      return;
+    }
+    if (typeof node !== 'object') return;
+
+    const looksLikeQuestion = looksLikeQuestionNode(node);
+    if (looksLikeQuestion) acc.push(node);
+
+    const skipKeys = looksLikeQuestion ? new Set(['choices', 'options', 'answers']) : null;
+    for (const key of Object.keys(node)) {
+      if (skipKeys && skipKeys.has(key)) continue;
+      collectQuestionNodes(node[key], acc);
+    }
+  }
+
+  function looksLikeQuestionNode(obj) {
+    if (!obj || typeof obj !== 'object') return false;
+    if (Array.isArray(obj.choices) && obj.choices.length) return true;
+    if (Array.isArray(obj.options) && obj.options.length) return true;
+    if (Array.isArray(obj.alternatives) && obj.alternatives.length) return true;
+    if (Array.isArray(obj.optionList) && obj.optionList.length) return true;
+    if (Array.isArray(obj.answers) && obj.answers.length) return true;
+    const choiceKeyExists = Object.keys(obj).some(k => /^choice\d+$/i.test(k));
+    if (choiceKeyExists) return true;
+    const textKeys = ['stem', 'question', 'text', 'prompt'];
+    if (textKeys.some(k => typeof obj[k] === 'string' && obj[k].trim())) return true;
+    if (typeof obj.id === 'string' && obj.id.trim() && (obj.subject || obj.year || obj.number)) return true;
+    return false;
+  }
+
+  function coerceQuestion(raw) {
+    if (!raw || typeof raw !== 'object') return { error: '問題データがオブジェクトではありません' };
+    const q = { ...raw };
+
+    q.subject = coalesceString([q.subject, q.category, q.course]);
+    q.stem = coalesceString([q.stem, q.question, q.text, q.prompt]);
+    q.explanation = coalesceString([q.explanation, q.commentary, q.detail, q.description]);
+
+    const yearVal = coalesceString([q.year, q.examYear, q.fiscalYear]);
+    const numberVal = coalesceString([q.number, q.no, q.index, q.problemNumber]);
+    const diffVal = coalesceString([q.difficulty, q.level]);
+
+    const yearNum = parseNumeric(q.year ?? yearVal) ?? parseNumeric(yearVal);
+    const numberNum = parseNumeric(q.number ?? numberVal) ?? parseNumeric(numberVal);
+    const diffNum = parseNumeric(q.difficulty ?? diffVal) ?? parseNumeric(diffVal);
+
+    q.year = yearNum ?? (yearVal || q.year || 0);
+    q.number = numberNum ?? (numberVal || q.number || 0);
+    q.difficulty = diffNum ?? q.difficulty ?? 0;
+
+    q.tags = Array.isArray(q.tags) ? q.tags : [];
+
+    const {
+      choices: rawChoices,
+      usedAnswersAsChoices,
+      originalAnswers,
+    } = resolveChoiceArray(q);
+    const normalizedChoices = normalizeChoices(rawChoices);
+    if (!normalizedChoices.length) return { error: `ID未設定の問題: 選択肢が見つかりません (${q.stem?.slice(0, 16) || 'stemなし'})` };
+    q.choices = normalizedChoices;
+
+    ensureCorrectChoice(q, { usedAnswersAsChoices, originalAnswers });
+
+    if (!q.id) {
+      if (!q.year || !q.subject || !q.number) {
+        const idStem = (q.stem && q.stem.trim()) ? q.stem.trim() : JSON.stringify(q).slice(0, 120);
+        q.id = `tmp-${hashString(idStem).slice(0, 8)}`;
+      } else {
+        q.id = generateQuestionId(q);
+      }
+    }
+
+    const error = validateQuestion(q);
+    if (error) return { error };
+    return { value: q };
+  }
+
+  function normalizeChoices(rawChoices) {
+    return (rawChoices || [])
+      .map((choice, idx) => normalizeChoice(choice, idx))
+      .filter(Boolean);
+  }
+
+  function resolveChoiceArray(q) {
+    if (Array.isArray(q.choices) && q.choices.length) return { choices: q.choices, usedAnswersAsChoices: false, originalAnswers: q.answers };
+    if (Array.isArray(q.options) && q.options.length) return { choices: q.options, usedAnswersAsChoices: false, originalAnswers: q.answers };
+    if (Array.isArray(q.alternatives) && q.alternatives.length) return { choices: q.alternatives, usedAnswersAsChoices: false, originalAnswers: q.answers };
+    if (Array.isArray(q.optionList) && q.optionList.length) return { choices: q.optionList, usedAnswersAsChoices: false, originalAnswers: q.answers };
+    if (Array.isArray(q.answers) && q.answers.length) {
+      const treatAsChoices = answersLookLikeChoices(q.answers);
+      if (treatAsChoices) {
+        return { choices: q.answers, usedAnswersAsChoices: true, originalAnswers: q.answers };
+      }
+    }
+    return { choices: extractChoicesFromKeys(q), usedAnswersAsChoices: false, originalAnswers: q.answers };
+  }
+
+  function answersLookLikeChoices(arr) {
+    let objectTextCount = 0;
+    let stringCount = 0;
+    let descriptiveStringCount = 0;
+
+    for (const item of arr) {
+      if (item == null) continue;
+      if (typeof item === 'object' && !Array.isArray(item)) {
+        const text = coalesceString([item.text, item.value, item.label, item.content, item.body, item.choice]);
+        if (text) {
+          objectTextCount += 1;
+          continue;
+        }
+      }
+
+      if (typeof item === 'string') {
+        const trimmed = item.trim();
+        if (!trimmed) continue;
+        stringCount += 1;
+        if (trimmed.length > 1 || /[\s、。・（）()]/.test(trimmed)) {
+          descriptiveStringCount += 1;
+        }
+        continue;
+      }
+
+      if (typeof item === 'number') {
+        continue;
+      }
+    }
+
+    if (objectTextCount > 0) return true;
+    if (descriptiveStringCount > 0) return true;
+    if (stringCount >= 3) return true;
+    return false;
+  }
+
+  function normalizeChoice(choice, idx) {
+    if (!choice && choice !== 0) return null;
+    if (typeof choice === 'string') {
+      const text = choice.trim();
+      if (!text) return null;
+      return { text, correct: false };
+    }
+    if (typeof choice === 'object') {
+      const text = coalesceString([choice.text, choice.value, choice.label, choice.content]);
+      if (!text) return null;
+      const correctFlags = [choice.correct, choice.isCorrect, choice.answer, choice.true, choice.ok];
+      const correct = correctFlags.some(flag => isTruthy(flag));
+      return { text, correct };
+    }
+    return null;
+  }
+
+  function extractChoicesFromKeys(obj) {
+    const keys = Object.keys(obj || {}).filter(k => /^choice\d+$/i.test(k));
+    keys.sort((a, b) => parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10));
+    return keys.map(k => obj[k]).filter(v => v != null && v !== '');
+  }
+
+  function ensureCorrectChoice(q, meta = {}) {
+    if (!Array.isArray(q.choices) || !q.choices.length) return;
+    if (q.choices.some(c => c.correct)) return;
+
+    const { usedAnswersAsChoices, originalAnswers } = meta;
+
+    const arrayCandidates = [
+      q.correctAnswers,
+      q.correctAnswer,
+      q.correctAnswerList,
+      q.correctOptions,
+      q.answersCorrect,
+      q.correctChoices,
+      q.answerChoices,
+      q.correctOptionIds,
+      q.correctIndices,
+      q.correctIndexes,
+      q.answerIndexes,
+    ].filter(arr => Array.isArray(arr) && arr.length);
+
+    if (!usedAnswersAsChoices && Array.isArray(originalAnswers) && originalAnswers.length) {
+      arrayCandidates.push(originalAnswers);
+    }
+
+    for (const arr of arrayCandidates) {
+      if (!Array.isArray(arr) || !arr.length) continue;
+
+      const indexSet = new Set();
+      const textSet = new Set();
+
+      for (const raw of arr) {
+        if (raw && typeof raw === 'object') {
+          const objIdx = parseCorrectIndex(raw.index ?? raw.position ?? raw.order ?? raw.id);
+          if (objIdx != null && q.choices[objIdx]) {
+            indexSet.add(objIdx);
+            continue;
+          }
+          const objText = coalesceString([raw.text, raw.value, raw.label, raw.answer]);
+          if (objText) {
+            textSet.add(objText);
+            continue;
+          }
+        }
+
+        const idx = parseCorrectIndex(raw);
+        if (idx != null && q.choices[idx]) {
+          indexSet.add(idx);
+          continue;
+        }
+        if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          if (trimmed) textSet.add(trimmed);
+        }
+      }
+
+      if (indexSet.size) {
+        q.choices = q.choices.map((c, i) => ({ ...c, correct: indexSet.has(i) }));
+        if (q.choices.some(c => c.correct)) return;
+      }
+
+      if (textSet.size) {
+        q.choices = q.choices.map((c) => ({
+          ...c,
+          correct: c.text && textSet.has(c.text.trim()),
+        }));
+        if (q.choices.some(c => c.correct)) return;
+      }
+    }
+
+    const correctIndexCandidates = [q.correctIndex, q.correct, q.answer, q.correctChoice, q.correctOption, q.answerIndex, q.correctAnswer];
+    for (const candidate of correctIndexCandidates) {
+      const idx = parseCorrectIndex(candidate);
+      if (idx != null && q.choices[idx]) {
+        q.choices = q.choices.map((c, i) => ({ ...c, correct: i === idx }));
+        return;
+      }
+    }
+
+    if (typeof q.answerText === 'string') {
+      const answerText = q.answerText.trim();
+      const matchedIndex = q.choices.findIndex(c => c.text.trim() === answerText);
+      if (matchedIndex >= 0) {
+        q.choices = q.choices.map((c, i) => ({ ...c, correct: i === matchedIndex }));
+        return;
+      }
+    }
+
+    // 正解情報が無い場合は先頭を正解とみなす
+    q.choices = q.choices.map((c, i) => ({ ...c, correct: i === 0 }));
+  }
+
+  function parseCorrectIndex(val) {
+    if (val == null || val === '') return null;
+    if (typeof val === 'number') return val >= 1 ? val - 1 : val;
+    const str = String(val).trim();
+    if (!str) return null;
+    if (/^\d+$/.test(str)) {
+      const n = Number(str);
+      return n >= 1 ? n - 1 : n;
+    }
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const idx = letters.indexOf(str.toUpperCase());
+    return idx >= 0 ? idx : null;
+  }
+
+  function coalesceString(values) {
+    for (const v of values) {
+      if (v == null) continue;
+      const str = String(v).trim();
+      if (str) return str;
+    }
+    return '';
+  }
+
+  function parseNumeric(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') return Number.isNaN(value) ? null : value;
+    const str = String(value).trim();
+    if (!str) return null;
+    const digits = str.match(/\d+/);
+    if (!digits) return null;
+    const num = Number(digits[0]);
+    return Number.isNaN(num) ? null : num;
+  }
+
+  function isTruthy(val) {
+    if (val === true) return true;
+    if (typeof val === 'number') return val !== 0;
+    if (typeof val === 'string') return ['true', '1', 'y', 'yes', 'ok', '〇', '○'].includes(val.trim().toLowerCase());
+    return false;
+  }
+
+  function generateQuestionId(q) {
+    const year = q.year || '0000';
+    const subjectCode = subjectToCode(q.subject);
+    const num = String(q.number || 0).padStart(2, '0');
+    return `${year}-${subjectCode}-${num}`;
+  }
+
+  function subjectToCode(subject) {
+    const base = normalizeSubjectName(subject);
+    if (!base) return 'misc';
+    if (base.includes('経済学')) return 'eco';
+    if (base.includes('財務')) return 'acc';
+    if (base.includes('企業経営')) return 'mgt';
+    if (base.includes('運営管理')) return 'opm';
+    if (base.includes('法務')) return 'law';
+    if (base.includes('情報')) return 'it';
+    if (base.includes('中小企業')) return 'sme';
+    return base.slice(0, 8) || 'misc';
+  }
+
+  function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash |= 0; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(16);
+  }
+
+  function validateQuestion(q) {
+    if (!q || typeof q !== 'object') return '問題データが不正です';
+    if (!q.id) return 'IDがありません';
+    if (!q.subject) return `ID:${q.id} 科目がありません`;
+    if (!q.year) return `ID:${q.id} 年度がありません`;
+    if (!q.number && q.number !== 0) return `ID:${q.id} 問題番号がありません`;
+    if (!q.stem) return `ID:${q.id} 問題文がありません`;
+    if (!Array.isArray(q.choices) || !q.choices.length) return `ID:${q.id} 選択肢が不正です`;
+    if (!q.choices.some(c => c && typeof c.text === 'string' && c.text.trim())) return `ID:${q.id} 選択肢の本文が空です`;
+    if (!q.choices.some(c => c && c.correct)) return `ID:${q.id} 正解が指定されていません`;
+    return null;
   }
 
   function exportQuestions() {
@@ -656,13 +1033,24 @@
     }
     try {
       const json = JSON.parse(text);
-      if (!Array.isArray(json)) { alert('JSON配列が必要です'); return; }
+      const arr = extractQuestionArray(json);
+      if (!arr.length) { alert('JSON配列が必要です（questions/items/data配列も可）'); return; }
+      const { valid, invalidReasons } = prepareQuestionList(arr);
+      if (!valid.length) {
+        alert(invalidReasons.join('\n') || '取り込める問題が見つかりませんでした');
+        return;
+      }
       const existing = loadQuestions();
       const byId = new Map(existing.map(q => [q.id, q]));
-      for (const q of json) if (validQuestion(q)) byId.set(q.id, q);
+      for (const q of valid) byId.set(q.id, q);
       const merged = Array.from(byId.values());
       saveJSON(STORAGE.questions, merged);
-      alert(`URLから取り込み完了。現在の問題数: ${merged.length}件`);
+      const messages = [`URLから取り込み完了。現在の問題数: ${merged.length}件`];
+      if (invalidReasons.length) {
+        const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+        messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+      }
+      alert(messages.join('\n'));
       refreshFiltersAndStats();
     } catch (e) {
       console.error(e);
@@ -731,12 +1119,19 @@
       if (!collected.length) { alert('抽出に失敗しました（問題が見つかりませんでした）'); return; }
 
       // 3) ローカルへ統合
+      const { valid, invalidReasons } = prepareQuestionList(collected);
+      if (!valid.length) { alert(invalidReasons.join('\n') || '取り込める問題が見つかりませんでした'); return; }
       const existing = loadQuestions();
       const byId = new Map(existing.map(q => [q.id, q]));
-      for (const q of collected) if (validQuestion(q)) byId.set(q.id, q);
+      for (const q of valid) byId.set(q.id, q);
       const merged = Array.from(byId.values());
       saveJSON(STORAGE.questions, merged);
-      alert(`HTMLから取り込み完了: ${collected.length}件（現在: ${merged.length}件）`);
+      const messages = [`HTMLから取り込み完了: ${valid.length}件（現在: ${merged.length}件）`];
+      if (invalidReasons.length) {
+        const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+        messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+      }
+      alert(messages.join('\n'));
       refreshFiltersAndStats();
     } catch (e) {
       console.error(e);

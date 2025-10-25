@@ -95,6 +95,28 @@
           <button id="pushBtn">サーバへ送信</button>
         </div>
         <p class="hint">軽量サーバを起動すれば、端末間で問題と進捗を共有できます。</p>
+        <h3>HTMLページから取得（PDF→問題JSON）</h3>
+        <div class="row">
+          <label style="min-width:320px;flex:1 1 420px;">
+            ページURL
+            <input id="htmlSourceUrl" type="text" placeholder="https://example.com/list.html" />
+          </label>
+          <label style="min-width:180px;flex:0 0 220px;">
+            パターン
+            <input id="htmlPattern" type="text" value="\.pdf(\?|#|$)" />
+          </label>
+        </div>
+        <div class="row">
+          <label style="min-width:220px;flex:0 0 240px;">
+            科目（任意）
+            <input id="htmlSubject" type="text" placeholder="例: 経営情報システム" />
+          </label>
+          <label style="min-width:140px;flex:0 0 160px;">
+            年度（任意）
+            <input id="htmlYear" type="number" placeholder="2025" />
+          </label>
+          <button id="fetchHtmlBtn">HTMLから取得</button>
+        </div>
       </section>
     </main>
 

@@ -11,6 +11,8 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8787;
+// Path to pdftoppm (Poppler). Allow overriding via env to avoid PATH issues on Windows.
+const PDFTOPPM = process.env.PDFTOPPM || process.env.POPPLER_BIN || 'pdftoppm';
 const DATA_DIR = path.join(__dirname, 'data');
 const QUESTIONS_FILE = path.join(DATA_DIR, 'questions.json');
 const PROGRESS_FILE = path.join(DATA_DIR, 'progress.json');
@@ -22,7 +24,7 @@ if (!fs.existsSync(QUESTIONS_FILE)) fs.writeFileSync(QUESTIONS_FILE, '[]');
 if (!fs.existsSync(PROGRESS_FILE)) fs.writeFileSync(PROGRESS_FILE, JSON.stringify({ byQuestionId: {}, stat: { total: 0, correct: 0 } }));
 fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 fs.mkdirSync(EXTRACT_DIR, { recursive: true });
-const { parsePdfText, extractQuestionsFromText } = require('./pdf');
+const { parsePdfText, extractQuestionsFromText } = require('./pdf2');
 const { createWorker } = require('tesseract.js');
 
 function send(res, code, body, headers = {}) {
@@ -90,6 +92,54 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { ok: true });
   }
 
+  // Check if pdftoppm (Poppler) is available from this Node process
+  if (req.method === 'GET' && pathname === '/api/ocr-check') {
+    try {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(PDFTOPPM, ['-v'], { encoding: 'utf-8' });
+      const out = (r.stdout || '') + (r.stderr || '');
+      const found = (r.status === 0) || /pdftoppm/i.test(out);
+      return send(res, 200, { found, bin: PDFTOPPM, stdout: r.stdout || '', stderr: r.stderr || '' });
+    } catch (e) {
+      return send(res, 200, { found: false, bin: PDFTOPPM });
+    }
+  }
+
+  // Questions store
+  if (req.method === 'GET' && pathname === '/api/questions') {
+    const qs = readJson(QUESTIONS_FILE, []);
+    return send(res, 200, qs);
+  }
+  if (req.method === 'POST' && pathname === '/api/questions') {
+    try {
+      const body = await parseBody(req);
+      const list = Array.isArray(body) ? body : [];
+      // Deduplicate by id if present
+      const byId = new Map(list.filter(x => x && x.id).map(x => [x.id, x]));
+      writeJson(QUESTIONS_FILE, Array.from(byId.values()));
+      return send(res, 200, { ok: true, count: byId.size });
+    } catch (e) {
+      return send(res, 400, { error: 'invalid_questions' });
+    }
+  }
+
+  // Progress store
+  if (req.method === 'GET' && pathname === '/api/progress') {
+    const pr = readJson(PROGRESS_FILE, { byQuestionId: {}, stat: { total: 0, correct: 0 } });
+    return send(res, 200, pr);
+  }
+  if (req.method === 'POST' && pathname === '/api/progress') {
+    try {
+      const body = await parseBody(req);
+      const current = readJson(PROGRESS_FILE, { byQuestionId: {}, stat: { total: 0, correct: 0 } });
+      const merged = mergeProgress(current, body || {});
+      writeJson(PROGRESS_FILE, merged);
+      return send(res, 200, { ok: true });
+    } catch (e) {
+      return send(res, 400, { error: 'invalid_progress' });
+    }
+  }
+
   // Simple proxy to fetch remote JSON/text (CORS bypass for the SPA)
   if (req.method === 'GET' && pathname === '/api/proxy') {
     const q = url.parse(req.url, true).query;
@@ -111,15 +161,17 @@ const server = http.createServer(async (req, res) => {
       const langs = (body?.langs || 'jpn,eng').split(',').map(s => s.trim()).filter(Boolean);
       const results = [];
       for (const lang of langs) {
-        const dest = path.join(DATA_DIR, 'tessdata', `${lang}.traineddata`);
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        if (!fs.existsSync(dest)) {
-          const urlTd = `https://tessdata.projectnaptha.com/4.0.0/${lang}.traineddata`;
-          const buf = await fetchBuffer(urlTd);
-          fs.writeFileSync(dest, buf);
-          results.push({ lang, downloaded: true });
+        const dir = path.join(DATA_DIR, 'tessdata');
+        fs.mkdirSync(dir, { recursive: true });
+        // tesseract.js は <langPath>/<lang>.traineddata.gz を探すため .gz を優先取得
+        const destGz = path.join(dir, `${lang}.traineddata.gz`);
+        if (!fs.existsSync(destGz)) {
+          const urlTdGz = `https://tessdata.projectnaptha.com/4.0.0/${lang}.traineddata.gz`;
+          const buf = await fetchBuffer(urlTdGz);
+          fs.writeFileSync(destGz, buf);
+          results.push({ lang, downloaded: true, file: path.relative(DATA_DIR, destGz) });
         } else {
-          results.push({ lang, downloaded: false });
+          results.push({ lang, downloaded: false, file: path.relative(DATA_DIR, destGz) });
         }
       }
       return send(res, 200, { ok: true, results });
@@ -157,7 +209,8 @@ const server = http.createServer(async (req, res) => {
       const outName = path.basename(rel, path.extname(rel)) + '.json';
       const outPath = path.join(EXTRACT_DIR, outName);
       fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
-      return send(res, 200, { ok: true, count: questions.length, file: path.relative(DATA_DIR, outPath) });
+      // 取り込みを簡単にするため、抽出結果もレスポンスで返す
+      return send(res, 200, { ok: true, count: questions.length, file: path.relative(DATA_DIR, outPath), questions });
     } catch (e) {
       return send(res, 500, { error: 'extract_failed' });
     }
@@ -204,12 +257,13 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const rel = body?.file || '';
       const lang = body?.lang || 'jpn';
+      const dpi = Math.max(72, Math.min(600, Number(body?.dpi) || 300));
       const abs = path.normalize(path.join(DATA_DIR, rel));
       if (!abs.startsWith(DATA_DIR)) return send(res, 400, { error: 'invalid path' });
       if (!fs.existsSync(abs)) return send(res, 404, { error: 'not found' });
       const outDir = path.join(DATA_DIR, 'tmp', path.basename(rel, path.extname(rel)));
       fs.mkdirSync(outDir, { recursive: true });
-      const ok = await tryPdftoppm(abs, outDir);
+      const ok = await tryPdftoppm(abs, outDir, dpi);
       if (!ok) return send(res, 400, { error: 'pdftoppm_not_found', hint: 'Install Poppler and ensure pdftoppm is in PATH, or convert PDF to images manually and call /api/ocr-image.' });
       const files = fs.readdirSync(outDir).filter(f => /\.png$/i.test(f)).map(f => path.join(outDir, f));
       const texts = [];
@@ -219,7 +273,7 @@ const server = http.createServer(async (req, res) => {
       const outName = path.basename(rel, path.extname(rel)) + '.ocr.json';
       const outPath = path.join(EXTRACT_DIR, outName);
       fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
-      return send(res, 200, { ok: true, pages: files.length, count: questions.length, file: path.relative(DATA_DIR, outPath) });
+      return send(res, 200, { ok: true, pages: files.length, count: questions.length, file: path.relative(DATA_DIR, outPath), questions });
     } catch (e) {
       return send(res, 500, { error: 'ocr_pdf_failed' });
     }
@@ -251,7 +305,7 @@ const server = http.createServer(async (req, res) => {
       const results = [];
       for (const item of list) {
         try {
-          const savedAs = await downloadIntoDir(item.href, DOWNLOAD_DIR);
+          const savedAs = await downloadIntoDir(item.href, DOWNLOAD_DIR, target);
           results.push({ href: item.href, file: path.relative(DATA_DIR, savedAs), ok: true });
         } catch (e) {
           results.push({ href: item.href, error: 'download_failed' });
@@ -269,7 +323,7 @@ const server = http.createServer(async (req, res) => {
     const target = (q.url || '').toString();
     if (!/^https?:\/\//i.test(target)) return send(res, 400, { error: 'invalid url' });
     try {
-      const saved = await downloadIntoDir(target, DOWNLOAD_DIR);
+      const saved = await downloadIntoDir(target, DOWNLOAD_DIR, target);
       return send(res, 200, { ok: true, file: path.relative(DATA_DIR, saved) });
     } catch (e) {
       return send(res, 502, { error: 'download_failed' });
@@ -326,7 +380,11 @@ function fetchRemote(target) {
       hostname: u.hostname,
       path: u.pathname + (u.search || ''),
       port: u.port || (u.protocol === 'https:' ? 443 : 80),
-      headers: { 'User-Agent': 'mini-backend/1.0' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) mini-backend/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ja,en;q=0.8',
+      },
     }, r => {
       if (r.statusCode && r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
         // one redirect hop
@@ -350,16 +408,36 @@ function extractLinks(html, baseUrl, pattern) {
   if (pattern) {
     try { filter = new RegExp(pattern, 'i'); } catch (_) { /* ignore invalid */ }
   }
+
+  // OCR each page into a flashcard-like question (1ページ=1設問, 暫定4択)
+  // (removed misplaced ocr-pages handler)
   const defaultPdf = /\.pdf(\?|#|$)/i;
   let m;
+  // 1) 普通の <a href="...">
   while ((m = reA.exec(html))) {
     const href = (m[2] || '').trim();
     const text = stripTags(m[3] || '').trim().replace(/\s+/g, ' ');
-    if (filter ? !filter.test(href) : !defaultPdf.test(href)) continue;
+    const target = href;
+    if (filter ? !filter.test(target) : !defaultPdf.test(target)) continue;
     try {
-      const abs = new URL(href, baseUrl).toString();
+      const abs = new URL(target, baseUrl).toString();
       out.push({ title: text || abs, href: abs });
     } catch (_) { /* ignore invalid */ }
+  }
+  // 2) HTML全体からの生URL検出（スクリプトやテキスト内に埋め込みの場合）
+  const reAbs = /https?:[^\s"'<>]+\.pdf(?:\?[^\s"'<>]*)?/ig;
+  while ((m = reAbs.exec(html))) {
+    const target = m[0];
+    if (filter ? !filter.test(target) : !defaultPdf.test(target)) continue;
+    try { out.push({ title: target, href: new URL(target, baseUrl).toString() }); } catch (_) {}
+  }
+  // 3) 相対パスらしき .pdf をざっくり拾う
+  const reRel = /(?:^|[^a-z0-9_\-\.])([\/][^\s"'<>]+?\.pdf(?:\?[^\s"'<>]*)?)/ig;
+  while ((m = reRel.exec(html))) {
+    const rel = m[1];
+    const target = rel;
+    if (filter ? !filter.test(target) : !defaultPdf.test(target)) continue;
+    try { out.push({ title: target, href: new URL(target, baseUrl).toString() }); } catch (_) {}
   }
   const seen = new Set();
   return out.filter(x => (seen.has(x.href) ? false : seen.add(x.href)));
@@ -369,7 +447,7 @@ function sanitizeFilename(name) {
   return name.replace(/[\x00-\x1f\x7f<>:"/\\|?*]+/g, '_');
 }
 
-async function downloadIntoDir(href, dir) {
+async function downloadIntoDir(href, dir, referer) {
   const u = new URL(href);
   let base = decodeURIComponent(u.pathname.split('/').pop() || 'file');
   base = sanitizeFilename(base);
@@ -382,7 +460,7 @@ async function downloadIntoDir(href, dir) {
     let i = 1;
     do { dest = path.join(dir, `${stem}(${i})${ext}`); i++; } while (fs.existsSync(dest));
   }
-  await downloadFile(href, dest);
+  await downloadFile(href, dest, referer);
   return dest;
 }
 
@@ -409,6 +487,12 @@ async function ocrImage(imagePath, lang) {
   try {
     await worker.loadLanguage(lang);
     await worker.initialize(lang);
+    // Improve OCR stability for Japanese exam PDFs
+    // PSM 6: Assume a single uniform block of text
+    // preserve_interword_spaces: keep spaces to help downstream splitting
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: 6, preserve_interword_spaces: '1' });
+    } catch (_) { /* older versions may ignore setParameters */ }
     const { data } = await worker.recognize(imagePath);
     return data?.text || '';
   } finally {
@@ -416,17 +500,27 @@ async function ocrImage(imagePath, lang) {
   }
 }
 
-function downloadFile(href, dest) {
+function downloadFile(href, dest, referer) {
   return new Promise((resolve, reject) => {
     const u = new URL(href);
     const lib = u.protocol === 'https:' ? https : http;
     const file = fs.createWriteStream(dest);
-    const req = lib.get(href, (r) => {
+    const req = lib.get({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || (u.protocol === 'https:' ? 443 : 80),
+      path: u.pathname + (u.search || ''),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) mini-backend/1.0',
+        ...(referer ? { Referer: referer } : {}),
+        'Accept': '*/*',
+      },
+    }, (r) => {
       if (r.statusCode && r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) {
         // follow one redirect
         file.close();
         fs.unlink(dest, () => {
-          downloadFile(new URL(r.headers.location, u).toString(), dest).then(resolve).catch(reject);
+          downloadFile(new URL(r.headers.location, u).toString(), dest, referer).then(resolve).catch(reject);
         });
         return;
       }
@@ -439,3 +533,25 @@ function downloadFile(href, dest) {
 }
 
 function stripTags(s) { return String(s).replace(/<[^>]*>/g, ''); }
+
+// Try calling pdftoppm to render PDF pages into PNGs under outDir.
+// Returns true if command executed and exited with code 0 and at least one PNG exists.
+async function tryPdftoppm(pdfPath, outDir, dpi = 200) {
+  return new Promise((resolve) => {
+    try {
+      const { spawn } = require('child_process');
+      const prefix = path.join(outDir, 'page');
+      const args = ['-png', '-r', String(dpi), pdfPath, prefix];
+      const proc = spawn(PDFTOPPM, args, { windowsHide: true });
+      let done = false;
+      proc.on('error', () => { if (!done) { done = true; resolve(false); } });
+      proc.on('close', (code) => {
+        if (done) return;
+        try {
+          const hasPng = fs.readdirSync(outDir).some(f => /\.png$/i.test(f));
+          resolve(code === 0 && hasPng);
+        } catch (_) { resolve(false); }
+      });
+    } catch (_) { resolve(false); }
+  });
+}

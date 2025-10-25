@@ -670,6 +670,80 @@
     }
   }
 
+  // ---------- HTMLページ（PDFリンク一覧）から取得 → ダウンロード → 抽出 → 取り込み ----------
+  async function importFromHtmlPage() {
+    try {
+      const pageUrlEl = document.getElementById('htmlSourceUrl');
+      const patternEl = document.getElementById('htmlPattern');
+      const subjectEl = document.getElementById('htmlSubject');
+      const yearEl = document.getElementById('htmlYear');
+      const pageUrl = (pageUrlEl?.value || '').trim();
+      const patternRaw = (patternEl?.value || '\\.[pP][dD][fF](\\\\?|#|$)').trim();
+      const pattern = patternRaw.replace(/\\\\/g, '\\'); // ユーザーが \\ を入力した場合に \\ -> \ に正規化
+      const subject = (subjectEl?.value || '').trim();
+      const year = Number((yearEl?.value || '').trim()) || 0;
+
+      const { serverUrl } = settings();
+      if (!serverUrl) { alert('サーバURLを設定してください（例: http://localhost:8787）'); return; }
+      if (!/^https?:\/\//i.test(pageUrl)) { alert('ページURLを正しく入力してください'); return; }
+      const base = serverUrl.replace(/\/$/, '');
+
+      // 1) ダウンロード（URLがPDFなら単体、HTMLなら抽出して一括）
+      let files = [];
+      if (/\.pdf(\?|#|$)/i.test(pageUrl)) {
+        const r = await fetch(base + '/api/download-file?url=' + encodeURIComponent(pageUrl), { method: 'POST', credentials: 'omit' });
+        if (!r.ok) throw new Error('download_failed');
+        const json = await r.json();
+        if (json?.ok && json.file) files.push(json.file);
+      } else {
+        const patternParam = pattern ? '&pattern=' + encodeURIComponent(pattern) : '';
+        const dlRes = await fetch(base + '/api/download?url=' + encodeURIComponent(pageUrl) + patternParam, { method: 'POST', credentials: 'omit' });
+        if (!dlRes.ok) throw new Error('download_failed');
+        const dl = await dlRes.json();
+        const items = dl?.items || dl?.results || [];
+        files = items.filter(r => r && r.ok && r.file).map(r => r.file);
+      }
+      if (!files.length) { alert('ダウンロード対象が見つかりませんでした'); return; }
+
+      // 2) 各PDFから問題を抽出（サーバ側がJSONを返すよう対応済み）
+      const headers = { 'Content-Type': 'application/json' };
+      let collected = [];
+      for (const rel of files) {
+        const body = { file: rel, meta: { subject, year } };
+        const exRes = await fetch(base + '/api/extract-questions', { method: 'POST', headers, body: JSON.stringify(body) });
+        if (!exRes.ok) continue;
+        const ex = await exRes.json();
+        if (Array.isArray(ex?.questions)) collected = collected.concat(ex.questions);
+      }
+      // テキスト抽出で0件ならOCRにフォールバック（Poppler + ネット接続が必要）
+      if (!collected.length) {
+        try {
+          await fetch(base + '/api/ocr-setup', { method: 'POST', headers, body: JSON.stringify({ langs: 'jpn' }) });
+        } catch (_) { /* ignore setup errors; ocr-pdf will report */ }
+        for (const rel of files) {
+          const body = { file: rel, lang: 'jpn', meta: { subject, year } };
+          const r = await fetch(base + '/api/ocr-pdf', { method: 'POST', headers, body: JSON.stringify(body) });
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (Array.isArray(j?.questions)) collected = collected.concat(j.questions);
+        }
+      }
+      if (!collected.length) { alert('抽出に失敗しました（問題が見つかりませんでした）'); return; }
+
+      // 3) ローカルへ統合
+      const existing = loadQuestions();
+      const byId = new Map(existing.map(q => [q.id, q]));
+      for (const q of collected) if (validQuestion(q)) byId.set(q.id, q);
+      const merged = Array.from(byId.values());
+      saveJSON(STORAGE.questions, merged);
+      alert(`HTMLから取り込み完了: ${collected.length}件（現在: ${merged.length}件）`);
+      refreshFiltersAndStats();
+    } catch (e) {
+      console.error(e);
+      alert('HTMLページからの取得に失敗しました');
+    }
+  }
+
   let pushTimer = null;
   function scheduleProgressPush() {
     clearTimeout(pushTimer);
@@ -702,6 +776,9 @@
     const urlInput = document.getElementById('importUrl');
     importQuestionsFromUrl(urlInput ? urlInput.value : '');
   });
+
+  const fetchHtmlBtn = document.getElementById('fetchHtmlBtn');
+  if (fetchHtmlBtn) fetchHtmlBtn.addEventListener('click', importFromHtmlPage);
 
   // 初期表示
   applyTheme(settings().theme || 'dark');

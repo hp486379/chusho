@@ -166,6 +166,28 @@
    git push -u origin work
    ```
 
+   - `error: src refspec work does not match any` が表示された場合は、コミットが 1 つもない状態で push しようとしています。`git status` や
+     `git log --oneline` でコミットが存在するかを確認し、必要なら `git add` → `git commit` を行ってください。
+
 4. 以後の更新は `git push` で反映できます。
 
-トークンや SSH キーなどの認証情報は、GitHub 側で発行したものを環境変数や認証エージェントに設定してください。
+### 認証エラーへの対処
+
+- `remote: Support for password authentication was removed` などと表示され push が拒否された場合は、GitHub で [Personal Access Token](https://github.com/settings/tokens)
+  を発行し、パスワードの代わりにトークンを使用してください。
+- `fatal: Authentication failed` が出る場合は、以下のいずれかで認証情報を設定します。
+  1. HTTPS を使用: `git remote set-url origin https://<TOKEN>@github.com/HP486379/chusho.git`
+     - `<TOKEN>` には発行した PAT を入れます（URL に埋め込む方法が不安な場合は後述の credential helper を推奨）。
+  2. Git Credential Manager などを利用して、`git push` 時にトークンを入力・保存します。
+  3. SSH を利用する場合は、公開鍵を GitHub に登録し、リモートを `git@github.com:HP486379/chusho.git` に変更します。
+- 実行環境に認証情報を保存できない場合は、`GITHUB_TOKEN=<PAT>` として一時的に環境変数を設定し、`git -c credential.helper="!f() { echo username=oauth2; echo password=$GITHUB_TOKEN; }; f" push` のように
+  1 コマンドだけトークンを渡す方法もあります。
+
+### 参考: push 時に確認したい項目
+
+1. `git status` でコミット漏れがないか。
+2. `git remote -v` で push 先 URL が目的のリポジトリか。
+3. `git config user.name` / `git config user.email` が適切か。
+4. 2 要素認証を有効化している場合は、PAT のスコープに `repo` を含める。
+
+これらを整えた上で再度 `git push -u origin work` を実行すると、GitHub 上のリポジトリにブランチが作成されます。

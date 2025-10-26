@@ -128,9 +128,30 @@
 - Poppler（pdftoppm）がPATHにある場合:
   - POST `http://localhost:8787/api/ocr-pdf`
   - Body(JSON): `{ "file": "downloads/<PDF名>", "lang": "jpn", "meta": { "subject": "...", "year": 2025 } }`
-  - 画像は `server/data/tmp/<PDF名基準>/` に生成、抽出結果は `server/data/extracted/*.ocr.json`
+- 画像は `server/data/tmp/<PDF名基準>/` に生成、抽出結果は `server/data/extracted/*.ocr.json`
 - pdftoppm が無い場合:
   - PDFを手元でPNGへ変換（300dpi推奨）し、`server/data/downloads/` に配置
   - 画像毎に POST `/api/ocr-image` → 返却テキストをまとめて `/api/extract-questions` へ渡す（手動）
 
 注: OCRは処理時間がかかります。最初に1〜2ページで確認し、ルール調整後に全ページへ拡張すると効率的です。
+
+## GitHub へのプッシュ手順
+
+演習用コンテナにはリモートリポジトリが設定されていません。ご自身の GitHub リポジトリへ反映する場合は、以下の手順でリモートを登録し、push を実行してください。
+
+1. GitHub で空のリポジトリ（例: `HP486379/chusho`）を作成します。
+2. このディレクトリでリモートを追加します。
+
+   ```bash
+   git remote add origin https://github.com/HP486379/chusho.git
+   ```
+
+3. ブランチを push します（認証が必要です）。
+
+   ```bash
+   git push -u origin work
+   ```
+
+4. 以後の更新は `git push` で反映できます。
+
+トークンや SSH キーなどの認証情報は、GitHub 側で発行したものを環境変数や認証エージェントに設定してください。

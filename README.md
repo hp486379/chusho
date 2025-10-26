@@ -158,6 +158,67 @@
      git remote set-url origin https://github.com/HP486379/chusho.git
      ```
 
+3. 認証情報を設定します（Personal Access Token や SSH キーなど）。詳細は後述の「push がエラーになる場合」を参照してください。
+
+4. 変更をコミットしてから push します。
+
+   ```bash
+   git status        # 変更確認
+   git add <files>   # 追加
+   git commit -m "メッセージ"
+   git push -u origin work  # 初回のみ -u を付与
+   ```
+
+## デプロイ方法
+
+アプリは静的な HTML/CSS/JavaScript で構成されているため、静的ホスティングサービスを利用すると手軽に公開できます。以下は代表的なデプロイ手順です。
+
+### GitHub Pages
+
+1. 上記の手順で GitHub リポジトリへ push します。
+2. GitHub 上でリポジトリの「Settings」→「Pages」を開き、`main` または `work` ブランチの `/(root)` を選択して保存します。
+3. 数十秒〜数分で `https://<ユーザー名>.github.io/<リポジトリ名>/` でアクセスできるようになります。
+
+### GitHub Actions（自動デプロイ）
+
+GitHub Pages 以外のサービスへも自動デプロイしたい場合は、ルートに以下のようなワークフローを配置します。
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [work]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+```
+
+このワークフローを `.github/workflows/deploy.yml` として追加すると、`work` ブランチへ push するたびに GitHub Pages へ反映されます（リポジトリ設定で Pages を「GitHub Actions」モードに切り替えておきます）。
+
+### Netlify
+
+1. Netlify にログインし、「Add new site」→「Import an existing project」を選択します。
+2. GitHub リポジトリを選び、ビルドコマンドは空欄（本プロジェクトはビルド不要）、Publish directory を `./` に設定します。
+3. デプロイ後、割り当てられた URL またはカスタムドメインでアクセスできます。
+
+### Vercel
+
+1. Vercel にログインし「New Project」から GitHub リポジトリをインポートします。
+2. Framework は「Other」、`Output Directory` は `./` を指定し、ビルドコマンドは空欄で構いません。
+3. デプロイが完了すると、自動で URL が発行されます。
+
+## push がエラーになる場合
+
    - 不要なリモートを削除して付け直したい場合は、`git remote remove origin` を実行してから `git remote add ...` を再度行ってください。
 
 3. ブランチを push します（認証が必要です）。

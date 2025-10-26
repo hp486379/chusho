@@ -166,8 +166,11 @@
    git status        # 変更確認
    git add <files>   # 追加
    git commit -m "メッセージ"
-   git push -u origin work  # 初回のみ -u を付与
+   git push -u origin HEAD  # 初回のみ -u を付与（現在のブランチ名で公開）
    ```
+
+   - GitHub の既定ブランチを `main` に揃えたい場合は `git push -u origin HEAD:main` を利用してください。
+   - Windows では `powershell -ExecutionPolicy Bypass -File tools/push-to-github.ps1` を実行すると、ブランチ確認とリモート設定を含む push 処理をまとめて行えます。
 
 ## デプロイ方法
 

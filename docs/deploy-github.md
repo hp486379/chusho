@@ -53,15 +53,53 @@ git commit -m "作業内容が分かるメッセージ"
 
 最初のコミットを行う場合は、`.gitignore` に `node_modules/` を追加してからコミットするのがおすすめです。
 
-## 4. GitHub へ push
+## 4. 現在のブランチを確認
 
-初回はブランチ名を指定し、`-u` オプションで追跡ブランチを設定します。ここでは例として `main` ブランチに公開します。
+`git branch --show-current` で作業中のブランチ名を確認します。ここで表示されたブランチをそのまま GitHub に公開するのがもっとも簡単です。
 
 ```bash
-git push -u origin main
+git branch --show-current
 ```
 
-別ブランチ（例: `work`）で開発している場合は、最後の引数を `work` に読み替えてください。
+`main` が表示される場合は次の手順で `main` に push します。`work` や `develop` など別名が表示された場合も同様に進められます。
+
+## 5. GitHub へ push
+
+初回は `-u` オプションを付けて、ローカルブランチとリモートブランチの対応付け（追跡設定）を行います。もっとも失敗しにくいのは、現在のブランチをそのまま push する方法です。
+
+```bash
+# 現在のブランチ -> 同名のリモートブランチ
+git push -u origin HEAD
+```
+
+特定のブランチ名（例: GitHub の既定ブランチを `main` にしたい）で公開したい場合は、次のように指定できます。
+
+```bash
+# 現在のブランチをリモートの main ブランチとして公開
+git push -u origin HEAD:main
+```
+
+> 💡 よくあるエラー: `error: src refspec main does not match any` → ローカルに `main` ブランチが存在しないまま `git push -u origin main` を実行すると発生します。上記のように `HEAD` を使うか、`git branch -M main` でブランチ名を変更してから再度 push してください。
+
+### PowerShell スクリプトで一括 push する場合（Windows）
+
+コマンドを毎回入力するのが面倒な場合は、リポジトリに追加した `tools/push-to-github.ps1` を使うと安全です。PowerShell を開き、プロジェクトのルートで以下を実行します。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/push-to-github.ps1
+```
+
+- 初回は `origin` が未設定なら自動追加します。
+- 既に別の URL が設定されている場合は `-ForceRemote` を付けると上書きできます。
+- GitHub の既定ブランチを `main` にしたいときは `-Branch main` を指定します。
+
+例:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/push-to-github.ps1 -Branch main -ForceRemote
+```
+
+> ⚠️ スクリプトはコミット済みの変更のみを push します。`git add` と `git commit` を終えてから実行してください。未コミットのファイルがあるとエラーを表示します。
 
 ### 認証に関するヒント
 

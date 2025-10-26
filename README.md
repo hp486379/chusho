@@ -140,11 +140,25 @@
 演習用コンテナにはリモートリポジトリが設定されていません。ご自身の GitHub リポジトリへ反映する場合は、以下の手順でリモートを登録し、push を実行してください。
 
 1. GitHub で空のリポジトリ（例: `HP486379/chusho`）を作成します。
-2. このディレクトリでリモートを追加します。
+2. このディレクトリで既存のリモート設定を確認します。
 
    ```bash
-   git remote add origin https://github.com/HP486379/chusho.git
+   git remote -v
    ```
+
+   - `origin` が未設定なら、以下で新しく追加します。
+
+     ```bash
+     git remote add origin https://github.com/HP486379/chusho.git
+     ```
+
+   - 既に `origin` が存在し、別のURLを指している場合は、`set-url` で上書きできます。
+
+     ```bash
+     git remote set-url origin https://github.com/HP486379/chusho.git
+     ```
+
+   - 不要なリモートを削除して付け直したい場合は、`git remote remove origin` を実行してから `git remote add ...` を再度行ってください。
 
 3. ブランチを push します（認証が必要です）。
 

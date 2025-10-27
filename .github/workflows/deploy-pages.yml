@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (static root)
 
 on:
   push:
@@ -22,21 +22,23 @@ jobs:
         with:
           ref: codex/assess-current-project-status
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
+      # 必要ファイルだけをステージング (_site) にコピー
+      - name: Prepare site files
+        run: |
+          mkdir -p _site
+          # 代表的なファイル/ディレクトリを存在するものだけコピー
+          for p in index.html 404.html app.js style.css styles.css \
+                   css js assets images img static public \
+                   kids-allowance kids-allowance-remote docs; do
+            if [ -e "$p" ]; then
+              cp -r "$p" _site/
+            fi
+          done
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: _site
 
   deploy:
     needs: build

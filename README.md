@@ -128,9 +128,130 @@
 - Poppler（pdftoppm）がPATHにある場合:
   - POST `http://localhost:8787/api/ocr-pdf`
   - Body(JSON): `{ "file": "downloads/<PDF名>", "lang": "jpn", "meta": { "subject": "...", "year": 2025 } }`
-  - 画像は `server/data/tmp/<PDF名基準>/` に生成、抽出結果は `server/data/extracted/*.ocr.json`
+- 画像は `server/data/tmp/<PDF名基準>/` に生成、抽出結果は `server/data/extracted/*.ocr.json`
 - pdftoppm が無い場合:
   - PDFを手元でPNGへ変換（300dpi推奨）し、`server/data/downloads/` に配置
   - 画像毎に POST `/api/ocr-image` → 返却テキストをまとめて `/api/extract-questions` へ渡す（手動）
 
 注: OCRは処理時間がかかります。最初に1〜2ページで確認し、ルール調整後に全ページへ拡張すると効率的です。
+
+## GitHub へのプッシュ手順
+
+演習用コンテナにはリモートリポジトリが設定されていません。ご自身の GitHub リポジトリへ反映する場合は、以下の手順でリモートを登録し、push を実行してください。
+
+1. GitHub で空のリポジトリ（例: `HP486379/chusho`）を作成します。
+2. このディレクトリで既存のリモート設定を確認します。
+
+   ```bash
+   git remote -v
+   ```
+
+   - `origin` が未設定なら、以下で新しく追加します。
+
+     ```bash
+     git remote add origin https://github.com/HP486379/chusho.git
+     ```
+
+   - 既に `origin` が存在し、別のURLを指している場合は、`set-url` で上書きできます。
+
+     ```bash
+     git remote set-url origin https://github.com/HP486379/chusho.git
+     ```
+
+3. 認証情報を設定します（Personal Access Token や SSH キーなど）。詳細は後述の「push がエラーになる場合」を参照してください。
+
+4. 変更をコミットしてから push します。
+
+   ```bash
+   git status        # 変更確認
+   git add <files>   # 追加
+   git commit -m "メッセージ"
+   git push -u origin HEAD  # 初回のみ -u を付与（現在のブランチ名で公開）
+   ```
+
+   - GitHub の既定ブランチを `main` に揃えたい場合は `git push -u origin HEAD:main` を利用してください。
+   - Windows では `powershell -ExecutionPolicy Bypass -File tools/push-to-github.ps1` を実行すると、ブランチ確認とリモート設定を含む push 処理をまとめて行えます。
+
+## デプロイ方法
+
+GitHub の `HP486379/chusho` で公開したい場合は、`docs/deploy-github.md` に push から GitHub Pages までの詳しい手順を記載しています。まずはそちらを参照してください。以下ではその他の代表的なデプロイ手順も紹介します。
+
+### GitHub Pages
+
+1. 上記の手順で GitHub リポジトリへ push します。
+2. GitHub 上でリポジトリの「Settings」→「Pages」を開き、`main` または `work` ブランチの `/(root)` を選択して保存します。
+3. 数十秒〜数分で `https://<ユーザー名>.github.io/<リポジトリ名>/` でアクセスできるようになります。
+
+### GitHub Actions（自動デプロイ）
+
+GitHub Pages 以外のサービスへも自動デプロイしたい場合は、ルートに以下のようなワークフローを配置します。
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: [work]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+```
+
+このワークフローを `.github/workflows/deploy.yml` として追加すると、`work` ブランチへ push するたびに GitHub Pages へ反映されます（リポジトリ設定で Pages を「GitHub Actions」モードに切り替えておきます）。
+
+### Netlify
+
+1. Netlify にログインし、「Add new site」→「Import an existing project」を選択します。
+2. GitHub リポジトリを選び、ビルドコマンドは空欄（本プロジェクトはビルド不要）、Publish directory を `./` に設定します。
+3. デプロイ後、割り当てられた URL またはカスタムドメインでアクセスできます。
+
+### Vercel
+
+1. Vercel にログインし「New Project」から GitHub リポジトリをインポートします。
+2. Framework は「Other」、`Output Directory` は `./` を指定し、ビルドコマンドは空欄で構いません。
+3. デプロイが完了すると、自動で URL が発行されます。
+
+## push がエラーになる場合
+
+   - 不要なリモートを削除して付け直したい場合は、`git remote remove origin` を実行してから `git remote add ...` を再度行ってください。
+
+3. ブランチを push します（認証が必要です）。
+
+   ```bash
+   git push -u origin work
+   ```
+
+   - `error: src refspec work does not match any` が表示された場合は、コミットが 1 つもない状態で push しようとしています。`git status` や
+     `git log --oneline` でコミットが存在するかを確認し、必要なら `git add` → `git commit` を行ってください。
+
+4. 以後の更新は `git push` で反映できます。
+
+### 認証エラーへの対処
+
+- `remote: Support for password authentication was removed` などと表示され push が拒否された場合は、GitHub で [Personal Access Token](https://github.com/settings/tokens)
+  を発行し、パスワードの代わりにトークンを使用してください。
+- `fatal: Authentication failed` が出る場合は、以下のいずれかで認証情報を設定します。
+  1. HTTPS を使用: `git remote set-url origin https://<TOKEN>@github.com/HP486379/chusho.git`
+     - `<TOKEN>` には発行した PAT を入れます（URL に埋め込む方法が不安な場合は後述の credential helper を推奨）。
+  2. Git Credential Manager などを利用して、`git push` 時にトークンを入力・保存します。
+  3. SSH を利用する場合は、公開鍵を GitHub に登録し、リモートを `git@github.com:HP486379/chusho.git` に変更します。
+- 実行環境に認証情報を保存できない場合は、`GITHUB_TOKEN=<PAT>` として一時的に環境変数を設定し、`git -c credential.helper="!f() { echo username=oauth2; echo password=$GITHUB_TOKEN; }; f" push` のように
+  1 コマンドだけトークンを渡す方法もあります。
+
+### 参考: push 時に確認したい項目
+
+1. `git status` でコミット漏れがないか。
+2. `git remote -v` で push 先 URL が目的のリポジトリか。
+3. `git config user.name` / `git config user.email` が適切か。
+4. 2 要素認証を有効化している場合は、PAT のスコープに `repo` を含める。
+
+これらを整えた上で再度 `git push -u origin work` を実行すると、GitHub 上のリポジトリにブランチが作成されます。

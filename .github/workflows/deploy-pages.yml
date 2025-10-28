@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages (static root)
+
+on:
+  push:
+    branches: [ codex/assess-current-project-status ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/assess-current-project-status
+
+      # 必要ファイルだけをステージング (_site) にコピー
+      - name: Prepare site files
+        run: |
+          mkdir -p _site
+          # 代表的なファイル/ディレクトリを存在するものだけコピー
+          for p in index.html 404.html app.js style.css styles.css \
+                   css js assets images img static public \
+                   kids-allowance kids-allowance-remote docs; do
+            if [ -e "$p" ]; then
+              cp -r "$p" _site/
+            fi
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

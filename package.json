@@ -4,7 +4,7 @@
   "description": "ローカルで動く最小構成のWebアプリです。中小企業診断士の一次試験の問題を体系的に学ぶための、学習モード・復習（間隔反復）モード・進捗保存（localStorage）を備えています。",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
   "repository": {
     "type": "git",

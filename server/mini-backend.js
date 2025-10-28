@@ -26,6 +26,7 @@ fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 fs.mkdirSync(EXTRACT_DIR, { recursive: true });
 const { parsePdfText, extractQuestionsFromText } = require('./pdf2');
 const { createWorker } = require('tesseract.js');
+const ImportNormalizer = require('../import-normalizer');
 
 function send(res, code, body, headers = {}) {
   const h = {
@@ -114,10 +115,10 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const list = Array.isArray(body) ? body : [];
-      // Deduplicate by id if present
-      const byId = new Map(list.filter(x => x && x.id).map(x => [x.id, x]));
+      const { valid, invalidReasons } = ImportNormalizer.normalizeQuestions(list);
+      const byId = new Map(valid.filter(x => x && x.id).map(x => [x.id, x]));
       writeJson(QUESTIONS_FILE, Array.from(byId.values()));
-      return send(res, 200, { ok: true, count: byId.size });
+      return send(res, 200, { ok: true, count: byId.size, skipped: invalidReasons.length });
     } catch (e) {
       return send(res, 400, { error: 'invalid_questions' });
     }
@@ -205,12 +206,20 @@ const server = http.createServer(async (req, res) => {
       if (!abs.startsWith(DATA_DIR)) return send(res, 400, { error: 'invalid path' });
       if (!fs.existsSync(abs)) return send(res, 404, { error: 'not found' });
       const { text } = await parsePdfText(abs);
-      const questions = extractQuestionsFromText(text, meta);
+      const rawQuestions = extractQuestionsFromText(text, meta);
+      const { valid, invalidReasons } = ImportNormalizer.normalizeQuestions(rawQuestions);
       const outName = path.basename(rel, path.extname(rel)) + '.json';
       const outPath = path.join(EXTRACT_DIR, outName);
-      fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
+      fs.writeFileSync(outPath, JSON.stringify(valid, null, 2));
       // 取り込みを簡単にするため、抽出結果もレスポンスで返す
-      return send(res, 200, { ok: true, count: questions.length, file: path.relative(DATA_DIR, outPath), questions });
+      return send(res, 200, {
+        ok: true,
+        count: valid.length,
+        skipped: invalidReasons.length,
+        file: path.relative(DATA_DIR, outPath),
+        questions: valid,
+        invalidReasons,
+      });
     } catch (e) {
       return send(res, 500, { error: 'extract_failed' });
     }
@@ -224,11 +233,12 @@ const server = http.createServer(async (req, res) => {
       try {
         const rel = path.relative(DATA_DIR, path.join(DOWNLOAD_DIR, f));
         const { text } = await parsePdfText(path.join(DOWNLOAD_DIR, f));
-        const questions = extractQuestionsFromText(text, {});
+        const rawQuestions = extractQuestionsFromText(text, {});
+        const { valid, invalidReasons } = ImportNormalizer.normalizeQuestions(rawQuestions);
         const outName = path.basename(f, path.extname(f)) + '.json';
         const outPath = path.join(EXTRACT_DIR, outName);
-        fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
-        results.push({ file: rel, count: questions.length, out: path.relative(DATA_DIR, outPath) });
+        fs.writeFileSync(outPath, JSON.stringify(valid, null, 2));
+        results.push({ file: rel, count: valid.length, skipped: invalidReasons.length, out: path.relative(DATA_DIR, outPath) });
       } catch (e) {
         results.push({ file: f, error: 'extract_failed' });
       }
@@ -269,11 +279,20 @@ const server = http.createServer(async (req, res) => {
       const texts = [];
       for (const f of files) texts.push(await ocrImage(f, lang));
       const combined = texts.join('\n');
-      const questions = extractQuestionsFromText(combined, body?.meta || {});
+      const rawQuestions = extractQuestionsFromText(combined, body?.meta || {});
+      const { valid, invalidReasons } = ImportNormalizer.normalizeQuestions(rawQuestions);
       const outName = path.basename(rel, path.extname(rel)) + '.ocr.json';
       const outPath = path.join(EXTRACT_DIR, outName);
-      fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
-      return send(res, 200, { ok: true, pages: files.length, count: questions.length, file: path.relative(DATA_DIR, outPath), questions });
+      fs.writeFileSync(outPath, JSON.stringify(valid, null, 2));
+      return send(res, 200, {
+        ok: true,
+        pages: files.length,
+        count: valid.length,
+        skipped: invalidReasons.length,
+        file: path.relative(DATA_DIR, outPath),
+        questions: valid,
+        invalidReasons,
+      });
     } catch (e) {
       return send(res, 500, { error: 'ocr_pdf_failed' });
     }

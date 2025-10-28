@@ -33,6 +33,14 @@
     '中小企業経営・中小企業政策',
   ];
 
+  const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this);
+  const normalizer = globalObj && globalObj.QuestionImportNormalizer;
+  if (!normalizer) {
+    throw new Error('import-normalizer.js が読み込まれていません。先にスクリプトを読み込んでください。');
+  }
+
+  const { normalizeSubjectName, prepareQuestionList, extractQuestionArray } = normalizer;
+
   function nowMs() { return Date.now(); }
   function daysToMs(d) { return d * 24 * 60 * 60 * 1000; }
 
@@ -227,23 +235,6 @@
       const okDiff = !difficulty || Number(q.difficulty) === Number(difficulty);
       return okSubject && okYear && okDiff;
     });
-  }
-
-  function normalizeSubjectName(name) {
-    if (!name) return '';
-    let s = String(name);
-    // 不可視文字除去（BOM/ゼロ幅）
-    s = s.replace(/\uFEFF/g, ''); // BOM / ZWNBSP
-    s = s.replace(/[\u200B\u200C\u200D]/g, ''); // ZERO WIDTH
-    // 括弧内容を除去（全角/半角）
-    s = s.replace(/（.*?）/g, '');
-    s = s.replace(/\(.*?\)/g, '');
-    // 全角空白→半角、スペース除去
-    s = s.replace(/　/g, ' ');
-    s = s.replace(/\s+/g, '');
-    // 記号のゆれ吸収
-    s = s.replace(/･/g, '・');
-    return s.trim();
   }
 
   // 科目ごとに均等に並べ替える（ラウンドロビン）。各科目内はシャッフル
@@ -526,28 +517,46 @@
     const files = Array.from(fileList || []);
     if (!files.length) return alert('ファイルを選択してください');
     const all = [];
+    const parseErrors = [];
     for (const f of files) {
       try {
         const json = JSON.parse(await f.text());
-        if (Array.isArray(json)) all.push(...json);
-      } catch (_) {}
+        const arr = extractQuestionArray(json);
+        if (arr.length) {
+          all.push(...arr);
+        } else {
+          parseErrors.push(`${f.name}: 問題データが見つかりませんでした`);
+        }
+      } catch (e) {
+        parseErrors.push(`${f.name}: JSONの解析に失敗しました`);
+      }
     }
+
+    const { valid, invalidReasons } = prepareQuestionList(all);
+    if (!valid.length) {
+      const detail = parseErrors.concat(invalidReasons).join('\n') || '有効な問題が見つかりませんでした';
+      alert(detail);
+      return;
+    }
+
     // 既存データとマージ（id重複は今回インポート分で上書き）
     const existing = loadQuestions();
     const byId = new Map(existing.map(q => [q.id, q]));
-    for (const q of all) if (validQuestion(q)) byId.set(q.id, q);
+    for (const q of valid) byId.set(q.id, q);
     const merged = Array.from(byId.values());
-    if (!merged.length) return alert('有効な問題が見つかりません');
     saveJSON(STORAGE.questions, merged);
-    alert(`現在の問題数: ${merged.length}件（既存と統合・重複は上書き）`);
-    refreshFiltersAndStats();
-  }
 
-  function validQuestion(q) {
-    if (!q || typeof q !== 'object') return false;
-    if (!q.id || !q.subject || !q.year || !q.number || !q.stem || !Array.isArray(q.choices)) return false;
-    const hasCorrect = q.choices.some(c => c && typeof c.text === 'string' && !!c.correct);
-    return hasCorrect;
+    const messages = [`現在の問題数: ${merged.length}件（既存と統合・重複は上書き）`];
+    if (invalidReasons.length) {
+      const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+      messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+    }
+    if (parseErrors.length) {
+      const samples = Array.from(new Set(parseErrors)).slice(0, 5);
+      messages.push(`ファイル解析エラー: ${parseErrors.length}件\n- ${samples.join('\n- ')}`);
+    }
+    alert(messages.join('\n\n'));
+    refreshFiltersAndStats();
   }
 
   function exportQuestions() {
@@ -656,13 +665,24 @@
     }
     try {
       const json = JSON.parse(text);
-      if (!Array.isArray(json)) { alert('JSON配列が必要です'); return; }
+      const arr = extractQuestionArray(json);
+      if (!arr.length) { alert('JSON配列が必要です（questions/items/data配列も可）'); return; }
+      const { valid, invalidReasons } = prepareQuestionList(arr);
+      if (!valid.length) {
+        alert(invalidReasons.join('\n') || '取り込める問題が見つかりませんでした');
+        return;
+      }
       const existing = loadQuestions();
       const byId = new Map(existing.map(q => [q.id, q]));
-      for (const q of json) if (validQuestion(q)) byId.set(q.id, q);
+      for (const q of valid) byId.set(q.id, q);
       const merged = Array.from(byId.values());
       saveJSON(STORAGE.questions, merged);
-      alert(`URLから取り込み完了。現在の問題数: ${merged.length}件`);
+      const messages = [`URLから取り込み完了。現在の問題数: ${merged.length}件`];
+      if (invalidReasons.length) {
+        const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+        messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+      }
+      alert(messages.join('\n'));
       refreshFiltersAndStats();
     } catch (e) {
       console.error(e);
@@ -731,12 +751,19 @@
       if (!collected.length) { alert('抽出に失敗しました（問題が見つかりませんでした）'); return; }
 
       // 3) ローカルへ統合
+      const { valid, invalidReasons } = prepareQuestionList(collected);
+      if (!valid.length) { alert(invalidReasons.join('\n') || '取り込める問題が見つかりませんでした'); return; }
       const existing = loadQuestions();
       const byId = new Map(existing.map(q => [q.id, q]));
-      for (const q of collected) if (validQuestion(q)) byId.set(q.id, q);
+      for (const q of valid) byId.set(q.id, q);
       const merged = Array.from(byId.values());
       saveJSON(STORAGE.questions, merged);
-      alert(`HTMLから取り込み完了: ${collected.length}件（現在: ${merged.length}件）`);
+      const messages = [`HTMLから取り込み完了: ${valid.length}件（現在: ${merged.length}件）`];
+      if (invalidReasons.length) {
+        const samples = Array.from(new Set(invalidReasons)).slice(0, 5);
+        messages.push(`取り込めなかったデータ: ${invalidReasons.length}件\n- ${samples.join('\n- ')}`);
+      }
+      alert(messages.join('\n'));
       refreshFiltersAndStats();
     } catch (e) {
       console.error(e);

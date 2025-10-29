@@ -1,130 +1,33 @@
 <!doctype html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>中小企業診断士 学習アプリ (MVP)</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <header class="app-header">
-      <h1>中小企業診断士 学習アプリ</h1>
-      <p class="subtitle">学習 / 復習（間隔反復） / 進捗保存</p>
-      <div class="header-actions">
-        <button id="themeToggle" class="secondary" title="ライト/ダーク切替">🌙 ダーク</button>
-      </div>
-    </header>
-
-    <main class="container">
-      <section class="controls">
-        <div class="row">
-          <label>
-            科目
-            <select id="subjectSelect">
-              <option value="">すべて</option>
-            </select>
-          </label>
-          <label>
-            年度
-            <select id="yearSelect">
-              <option value="">すべて</option>
-            </select>
-          </label>
-          <label>
-            難易度
-            <select id="difficultySelect">
-              <option value="">指定なし</option>
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-            </select>
-          </label>
-        </div>
-        <div class="row">
-          <span class="mode-label">モード</span>
-          <label class="radio"><input type="radio" name="mode" value="study" checked /> 学習</label>
-          <label class="radio"><input type="radio" name="mode" value="review" /> 復習</label>
-          <button id="startBtn" class="primary">学習開始</button>
-        </div>
-      </section>
-
-      <section id="stats" class="stats">
-        <div><strong>問題数:</strong> <span id="statCount">-</span></div>
-        <div><strong>正答率:</strong> <span id="statAccuracy">-</span></div>
-        <div><strong>本日の復習数:</strong> <span id="statDue">-</span></div>
-      </section>
-
-      <section id="quiz" class="quiz hidden">
-        <div id="quizMeta" class="quiz-meta"></div>
-        <div id="stem" class="stem"></div>
-        <div id="choices" class="choices"></div>
-        <div id="explanation" class="explanation hidden"></div>
-        <div class="quiz-actions">
-          <button id="nextBtn" class="secondary hidden">次へ ▶</button>
-          <button id="endBtn" class="secondary hidden">終了</button>
-        </div>
-      </section>
-
-      <section class="data">
-        <h2>データ管理</h2>
-        <div class="row">
-          <input type="file" id="importFile" accept="application/json" multiple />
-          <button id="importBtn">問題をインポート（追加/統合・複数可）</button>
-          <button id="exportBtn">問題をエクスポート</button>
-          <button id="resetProgressBtn" class="danger">進捗をリセット</button>
-        </div>
-        <div class="row">
-          <label style="min-width:320px;flex:1 1 400px;">
-            URLからインポート（JSON配列）
-            <input id="importUrl" type="text" placeholder="https://example.com/questions.json" />
-          </label>
-          <button id="importUrlBtn">URLを読み込み</button>
-        </div>
-        <p class="hint">インポートは上記スキーマのJSON配列に対応します。進捗はブラウザに保存されます。</p>
-
-        <h3>同期（任意）</h3>
-        <div class="row">
-          <label style="min-width:240px;flex:1 1 300px;">
-            サーバURL（例: http://localhost:8787）
-            <input id="serverUrl" type="text" placeholder="http://localhost:8787" />
-          </label>
-          <label class="radio"><input type="checkbox" id="syncEnabled" /> 自動同期を有効化</label>
-          <button id="pullBtn">サーバから取得</button>
-          <button id="pushBtn">サーバへ送信</button>
-        </div>
-        <p class="hint">軽量サーバを起動すれば、端末間で問題と進捗を共有できます。</p>
-        <h3>HTMLページから取得（PDF→問題JSON）</h3>
-        <div class="row">
-          <label style="min-width:320px;flex:1 1 420px;">
-            ページURL
-            <input id="htmlSourceUrl" type="text" placeholder="https://example.com/list.html" />
-          </label>
-          <label style="min-width:180px;flex:0 0 220px;">
-            パターン
-            <input id="htmlPattern" type="text" value="\.pdf(\?|#|$)" />
-          </label>
-        </div>
-        <div class="row">
-          <label style="min-width:220px;flex:0 0 240px;">
-            科目（任意）
-            <input id="htmlSubject" type="text" placeholder="例: 経営情報システム" />
-          </label>
-          <label style="min-width:140px;flex:0 0 160px;">
-            年度（任意）
-            <input id="htmlYear" type="number" placeholder="2025" />
-          </label>
-          <button id="fetchHtmlBtn">HTMLから取得</button>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>v0.1 (ローカルMVP)</span>
-    </footer>
-
-    <script src="import-normalizer.js"></script>
-    <script src="app.js"></script>
-  </body>
-  </html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="refresh" content="0; url=/chusho/">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base href="/chusho/">
+  <title>404 - Redirecting…</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif; display: grid; place-items: center; height: 100vh; }
+    .box { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>404</h1>
+    <p>ページが見つかりませんでした。アプリに戻ります…</p>
+    <p><a href="/chusho/">/chusho/ に戻る</a></p>
+  </div>
+  <script>
+    // 履歴API系の直リンクに来た場合でも index へ戻す保険
+    (function () {
+      var target = "/chusho/";
+      if (location.pathname && !location.pathname.endsWith("/chusho/")) {
+        // ハッシュやクエリを維持したい場合はここで連結
+        var qs = location.search || "";
+        var hash = location.hash || "";
+        location.replace(target + qs + hash);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -258,7 +258,8 @@ jobs:
 
 1. `git status` でコミット漏れがないか。
 2. `git remote -v` で push 先 URL が目的のリポジトリか。
-3. `git config user.name` / `git config user.email` が適切か。
-4. 2 要素認証を有効化している場合は、PAT のスコープに `repo` を含める。
+   
+4. `git config user.name` / `git config user.email` が適切か。
+5. 2 要素認証を有効化している場合は、PAT のスコープに `repo` を含める。
 
 これらを整えた上で再度 `git push -u origin work` を実行すると、GitHub 上のリポジトリにブランチが作成されます。
